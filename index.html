@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>ตรวจสอบ Tax ID</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { font-size: 1rem; padding: 8px; }
+    .result { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h2>🔍 ตรวจสอบ Tax ID</h2>
+  <input id="taxid" placeholder="กรอกเลขผู้เสียภาษี 13 หลัก" style="width: 100%;" />
+  <br /><br />
+  <button onclick="checkTaxId()">ค้นหา</button>
+  <div id="result" class="result">...</div>
+
+  <script>
+    const msalConfig = {
+      auth: {
+        clientId: "b280258b-6add-49cc-a145-ab95c1e210d9",
+        authority: "https://login.microsoftonline.com/43cb7da1-22cd-4566-a65b-c2a329519d2b",
+        redirectUri: window.location.href
+      }
+    };
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+    const scopes = ["https://graph.microsoft.com/.default", "Sites.Read.All"];
+
+    async function getToken() {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        return msalInstance.acquireTokenSilent({
+          account: accounts[0],
+          scopes
+        }).then(res => res.accessToken);
+      } else {
+        return msalInstance.loginPopup({ scopes }).then(res => res.accessToken);
+      }
+    }
+
+    async function checkTaxId() {
+      const taxIdValue = document.getElementById("taxid").value.trim();
+      document.getElementById("result").textContent = "กำลังค้นหา...";
+      try {
+        const token = await getToken();
+        const query = encodeURIComponent(`fields/Tax_x0020_ID eq '${taxIdValue}'`);
+        const res = await fetch(`https://graph.microsoft.com/v1.0/sites/accordpilotthailand.sharepoint.com:/sites/เช็กลูกค้า:/lists/เช็กลูกค้า/items?$expand=fields&$filter=${query}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (data.value.length > 0) {
+          const item = data.value[0].fields;
+          document.getElementById("result").innerHTML = `
+            ✅ พบข้อมูล: <b>${item["CUSTOMER_x0020_NAME"]}</b><br>
+            Company: ${item.COMPANY}<br>
+            OWNER: ${item.OWNER}<br>
+            STATUS: ${item.STATUS}<br>
+            IT CHECK: ${item["IT_x0020_CHECK"] || "ไม่มี"}<br>
+            วันที่ติดต่อ: ${item["FIRST_x0020_CONTACT_x0020_DATE"] || "-"}<br>
+            REMARK: ${item.REMARK || "-"}
+          `;
+        } else {
+          document.getElementById("result").textContent = "❌ ไม่พบข้อมูลในระบบ";
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById("result").textContent = "เกิดข้อผิดพลาด: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
